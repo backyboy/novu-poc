@@ -7,6 +7,7 @@ import {
   InMemoryProviderService,
 } from '../in-memory-provider';
 
+export const IOREDIS_AUTOPIPELINING_PREFIX = '{distributed-lock}';
 const LOG_CONTEXT = 'DistributedLock';
 
 interface ILockOptions {
@@ -122,10 +123,20 @@ export class DistributedLockService {
       return await handler();
     }
 
-    const releaseLock = await this.lock(resource, ttl);
+    /**
+     * Add prefix to allow autopipelining functionality of ioredis
+     * We add it here instead where the resource name creation is as this is the single entry point
+     * and all the DistributedLock functionalities take the value from here.
+     */
+    const resourceWithPrefix = `${IOREDIS_AUTOPIPELINING_PREFIX}${resource}`;
+
+    const releaseLock = await this.lock(resourceWithPrefix, ttl);
 
     try {
-      Logger.debug(`Lock ${resource} for ${handler.name}`, LOG_CONTEXT);
+      Logger.debug(
+        `Lock ${resourceWithPrefix} for ${handler.name}`,
+        LOG_CONTEXT
+      );
 
       const result = await handler();
 
@@ -133,7 +144,7 @@ export class DistributedLockService {
     } finally {
       await releaseLock();
       Logger.debug(
-        `Lock ${resource} released for ${handler.name}`,
+        `Lock ${resourceWithPrefix} released for ${handler.name}`,
         LOG_CONTEXT
       );
     }

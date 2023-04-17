@@ -6,7 +6,10 @@ import {
   InMemoryProviderClient,
   InMemoryProviderService,
 } from '../in-memory-provider';
-import { DistributedLockService } from './distributed-lock.service';
+import {
+  DistributedLockService,
+  IOREDIS_AUTOPIPELINING_PREFIX,
+} from './distributed-lock.service';
 
 const originalRedisCacheServiceHost = (process.env.REDIS_CACHE_SERVICE_HOST =
   process.env.REDIS_CACHE_SERVICE_HOST ?? 'localhost');
@@ -116,17 +119,25 @@ describe('Distributed Lock Service', () => {
         const firstTimeout = TTL / 2;
         await setTimeout(firstTimeout);
 
-        let resourceExists = await client!.exists(resource);
+        let resourceExists = await client!.exists(
+          `${IOREDIS_AUTOPIPELINING_PREFIX}${resource}`
+        );
         expect(resourceExists).toEqual(1);
         // TTL + this time should be less than the handler set one to see that the self expiration works
         await setTimeout(firstTimeout * 2 + 10);
-        resourceExists = await client!.exists(resource);
+        resourceExists = await client!.exists(
+          `${IOREDIS_AUTOPIPELINING_PREFIX}${resource}`
+        );
         expect(resourceExists).toEqual(0);
 
-        expect(spyLock).toHaveBeenNthCalledWith(1, [resource], TTL);
+        expect(spyLock).toHaveBeenNthCalledWith(
+          1,
+          [`${IOREDIS_AUTOPIPELINING_PREFIX}${resource}`],
+          TTL
+        );
         expect(spyIncreaseLockCounter).toHaveBeenCalledTimes(1);
-        // Unlock shouldn't be called as the lock expires by going over TTL
-        expect(spyUnlock).not.toHaveBeenCalled();
+        // Unlock is still called even when the lock expires by going over TTL but errors
+        expect(spyUnlock).toHaveBeenCalledTimes(1);
       });
 
       it('should create lock and it should expire if the handler throws', async () => {
@@ -152,7 +163,11 @@ describe('Distributed Lock Service', () => {
           expect(resourceExists).toEqual(0);
         }
 
-        expect(spyLock).toHaveBeenNthCalledWith(1, [resource], TTL);
+        expect(spyLock).toHaveBeenNthCalledWith(
+          1,
+          [`${IOREDIS_AUTOPIPELINING_PREFIX}${resource}`],
+          TTL
+        );
         expect(spyIncreaseLockCounter).toHaveBeenCalledTimes(1);
         expect(spyDecreaseLockCounter).toHaveBeenCalledTimes(1);
         expect(spyUnlock).toHaveBeenCalledTimes(1);
@@ -187,11 +202,18 @@ describe('Distributed Lock Service', () => {
           secondCall: true,
         });
         expect(spyLock).toHaveBeenCalledTimes(2);
-        expect(spyLock).toHaveBeenCalledWith([resource], TTL);
+        expect(spyLock).toHaveBeenCalledWith(
+          [`${IOREDIS_AUTOPIPELINING_PREFIX}${resource}`],
+          TTL
+        );
         expect(spyIncreaseLockCounter).toHaveBeenCalledTimes(2);
-        expect(spyIncreaseLockCounter).toHaveBeenCalledWith(resource);
+        expect(spyIncreaseLockCounter).toHaveBeenCalledWith(
+          `${IOREDIS_AUTOPIPELINING_PREFIX}${resource}`
+        );
         expect(spyDecreaseLockCounter).toHaveBeenCalledTimes(2);
-        expect(spyDecreaseLockCounter).toHaveBeenCalledWith(resource);
+        expect(spyDecreaseLockCounter).toHaveBeenCalledWith(
+          `${IOREDIS_AUTOPIPELINING_PREFIX}${resource}`
+        );
         expect(spyUnlock).toHaveBeenCalledTimes(2);
       });
 
@@ -221,9 +243,14 @@ describe('Distributed Lock Service', () => {
 
         expect(executed).toEqual(1);
         expect(spyLock).toHaveBeenCalledTimes(5);
-        expect(spyLock).toHaveBeenCalledWith([resource], TTL);
+        expect(spyLock).toHaveBeenCalledWith(
+          [`${IOREDIS_AUTOPIPELINING_PREFIX}${resource}`],
+          TTL
+        );
         expect(spyIncreaseLockCounter).toHaveBeenCalledTimes(5);
-        expect(spyIncreaseLockCounter).toHaveBeenCalledWith(resource);
+        expect(spyIncreaseLockCounter).toHaveBeenCalledWith(
+          `${IOREDIS_AUTOPIPELINING_PREFIX}${resource}`
+        );
         expect(spyUnlock.mock.calls.length).toBeGreaterThanOrEqual(5);
       });
 
@@ -255,9 +282,14 @@ describe('Distributed Lock Service', () => {
 
         expect(executed).toEqual(5);
         expect(spyLock).toHaveBeenCalledTimes(5);
-        expect(spyLock).toHaveBeenCalledWith([resource], TTL);
+        expect(spyLock).toHaveBeenCalledWith(
+          [`${IOREDIS_AUTOPIPELINING_PREFIX}${resource}`],
+          TTL
+        );
         expect(spyIncreaseLockCounter).toHaveBeenCalledTimes(5);
-        expect(spyIncreaseLockCounter).toHaveBeenCalledWith(resource);
+        expect(spyIncreaseLockCounter).toHaveBeenCalledWith(
+          `${IOREDIS_AUTOPIPELINING_PREFIX}${resource}`
+        );
         expect(spyUnlock.mock.calls.length).toBeGreaterThanOrEqual(5);
       });
     });
